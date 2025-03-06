@@ -20,13 +20,13 @@ import sys
 import numpy as np
 from scipy import interpolate, linalg, optimize
 import time
-from distmod_random import rundistmod
+from distmod import rundistmod
 
-Nseeds = 50 # choose Nseeds = 0 to run it on a single file instead of the Nseeds random subsamples
+Nseeds = 0 # choose Nseeds = 0 to run it on a single file instead of the Nseeds random subsamples
 versionname = '1690' # base sample from which the data was generated; for Nseeds == 0, 'PP_' + versionname + '_input.txt' etc. are used
 Nsamples = [580, 660, 750, 875, 1000] # sample sizes of the random subsamples
 zcuts = np.linspace(0,0.1,41) # alternative: [0.01, 0.033, 0.05, 0.075, 0.1]
-constructdistmod = True # whether the distmod code is to be run before the frequentist loop
+constructdistmod = False # whether the distmod code is to be run before the frequentist loop
 
 # ===============================================================================================
 

@@ -84,19 +84,52 @@ def PPcovFIT(fulldf, fitopt):
     return covdf
 
 def PPcovDUPL(fulldf):
-    dupldf = fulldf.loc[:, ['mB', 'x1', 'c', 'CID', 'IDSURVEY']].sort_index().copy().set_index(['CID', 'IDSURVEY'], append=True, drop=False)
-    mean = dupldf.groupby(level='CID').mean()
-    residual = (dupldf - mean).loc[:, ['mB', 'x1', 'c']].droplevel(['CID', 'IDSURVEY'])
-    orgdelta = pd.DataFrame(residual.stack())
-    orgdelta.index = blockidx(residual.index)
+    """
+    Calculate covariance for duplicated SNe with proper type handling
+    """
+    # Create a copy and only select needed columns
+    dupldf = fulldf.loc[:, ['mB', 'x1', 'c', 'CID', 'IDSURVEY']].sort_index().copy()
+    
+    # Ensure numeric columns are properly typed before groupby
+    numeric_cols = ['mB', 'x1', 'c']
+    for col in numeric_cols:
+        dupldf[col] = pd.to_numeric(dupldf[col], errors='coerce')
+    
+    # Handle CID column - preserve leading zeros by keeping as string
+    dupldf['CID'] = dupldf['CID'].astype(str)
+    
+    # Calculate mean before setting the multi-index
+    mean = dupldf.groupby('CID')[numeric_cols].mean()
+    
+    # Now set the multi-index
+    dupldf = dupldf.set_index(['CID', 'IDSURVEY'], append=True, drop=False)
+    
+    # Calculate residuals by joining mean back to original data using CID as key
+    residuals = pd.DataFrame()
+    for col in numeric_cols:
+        # Get the mean values for this CID
+        mean_values = mean[col].reindex(dupldf.index.get_level_values('CID'))
+        residuals[col] = dupldf[col] - mean_values.values
+    
+    # Drop the multi-index levels we don't need
+    residuals.index = dupldf.index.droplevel(['CID', 'IDSURVEY'])
+    
+    # Convert to stacked format
+    orgdelta = pd.DataFrame(residuals.stack())
+    orgdelta.index = blockidx(residuals.index)
+    
+    # Process each supernova
     sigmae = []
-    for sn in np.unique(dupldf.CID):
-        snversions = [sv for sv in residual.index if extractsne(sv) == sn]
-        delta = orgdelta.loc[blockidx(snversions), :]
-        sigma = delta @ delta.T
-        const = magmagmatrix(pd.DataFrame(np.full(int(len(sigma.index) / 3), 0.102), index=snversions))
-        const = offdiagduplicates(const) - const
-        sigmae.append(sigma + const)
+    for sn in mean.index:  # Use mean.index which contains unique CIDs
+        snversions = [sv for sv in residuals.index if extractsne(sv) == sn]
+        if snversions:  # Check if we have versions for this supernova
+            delta = orgdelta.loc[blockidx(snversions), :]
+            sigma = delta @ delta.T
+            const = magmagmatrix(pd.DataFrame(np.full(int(len(sigma.index) / 3), 0.102), index=snversions))
+            const = offdiagduplicates(const) - const
+            sigmae.append(sigma + const)
+    
+    # Combine all results
     sigmadupl = pd.concat(sigmae).fillna(0)
     return sigmadupl
 

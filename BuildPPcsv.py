@@ -7,7 +7,7 @@ mkposdef = True # force the covariance matrix to be positive definite by droppin
 nominal = 'FITOPT000' # file used to get the statistical covariance and the reference values
 nominalmu = 'MUOPT000'
 reducelowz = False # whether to reduce the excess of low-redshift SNe to an amount similar to the JLA/P+ subsample
-Nseeds = 1 # number of random subsamples to be drawn
+Nseeds = 0 # number of random subsamples to be drawn
 m = 1000 # size of the random subsamples
 choosewithoutreduce = 'high' # for 'high', the third with highest zCMB is fully taken and the other two are chosen randomly
 # other possibilities: 'low' (the other way round) or 'none' (usual random subsample with same distribution as the full one)
@@ -84,19 +84,52 @@ def PPcovFIT(fulldf, fitopt):
     return covdf
 
 def PPcovDUPL(fulldf):
-    dupldf = fulldf.loc[:, ['mB', 'x1', 'c', 'CID', 'IDSURVEY']].sort_index().copy().set_index(['CID', 'IDSURVEY'], append=True, drop=False)
-    mean = dupldf.groupby(level='CID').mean()
-    residual = (dupldf - mean).loc[:, ['mB', 'x1', 'c']].droplevel(['CID', 'IDSURVEY'])
+    # Create a copy with only needed columns
+    dupldf = fulldf.loc[:, ['mB', 'x1', 'c', 'CID', 'IDSURVEY']].sort_index().copy()
+    
+    # Convert numeric columns explicitly before any operations
+    numeric_columns = ['mB', 'x1', 'c']
+    for col in numeric_columns:
+        dupldf[col] = pd.to_numeric(dupldf[col], errors='coerce')
+    
+    # Keep CID as string to preserve leading zeros
+    dupldf['CID'] = dupldf['CID'].astype(str)
+    dupldf['IDSURVEY'] = dupldf['IDSURVEY'].astype(str)
+    
+    # Calculate means
+    mean_values = pd.DataFrame()
+    for col in numeric_columns:
+        mean_values[col] = dupldf.groupby('CID')[col].transform('mean')
+    
+    # Calculate residuals while keeping CID and IDSURVEY
+    residual = dupldf.copy()
+    residual[numeric_columns] = dupldf[numeric_columns].subtract(mean_values)
+    
+    # Now set the index
+    residual = residual.set_index(['CID', 'IDSURVEY'], append=True)
+    
+    # Drop the unnecessary columns and levels
+    residual = residual[numeric_columns]
+    residual = residual.droplevel(['CID', 'IDSURVEY'])
+    
+    # Stack and process
     orgdelta = pd.DataFrame(residual.stack())
     orgdelta.index = blockidx(residual.index)
+    
+    # Process each supernova
     sigmae = []
-    for sn in np.unique(dupldf.CID):
+    unique_cids = dupldf['CID'].unique()
+    
+    for sn in unique_cids:
         snversions = [sv for sv in residual.index if extractsne(sv) == sn]
-        delta = orgdelta.loc[blockidx(snversions), :]
-        sigma = delta @ delta.T
-        const = magmagmatrix(pd.DataFrame(np.full(int(len(sigma.index) / 3), 0.102), index=snversions))
-        const = offdiagduplicates(const) - const
-        sigmae.append(sigma + const)
+        if len(snversions) > 0:
+            delta = orgdelta.loc[blockidx(snversions), :]
+            sigma = delta @ delta.T
+            const = magmagmatrix(pd.DataFrame(np.full(int(len(sigma.index) / 3), 0.102), index=snversions))
+            const = offdiagduplicates(const) - const
+            sigmae.append(sigma + const)
+    
+    # Combine results
     sigmadupl = pd.concat(sigmae).fillna(0)
     return sigmadupl
 

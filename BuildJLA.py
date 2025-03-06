@@ -68,7 +68,7 @@ def JLA_data():
     delim = (12, 9, 9, 1, 10, 9, 10, 9, 10, 9, 10, 10, 13, 9, 10, 10, 10, 1, 11, 11, 10)
     
     # load the data
-    file = 'S:\\Documents\\Zac_Final_Build\\General_480_Files\\tablef3.dat'
+    file = 'JLA_data/tablef3.dat'
     data = np.genfromtxt(file, delimiter=delim, dtype=ndtypes, autostrip=True)
     
     zcmb = data['zcmb']
