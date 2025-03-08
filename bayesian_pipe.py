@@ -25,14 +25,15 @@ class loglike(object):
 
 	def __call__(self,cube,ndim,nparams):
 
-		cube_aug = np.zeros(21)
+		cube_aug = np.zeros(23)
 		for icube,i in enumerate(self.ipars):
 			cube_aug[i] = cube[icube]
 
 		# broadcast to all parameters. if model=ts then Q=fv0 otherwise Q=Omega_M0
 		(self.Q, self.A, self.X0, self.VX, self.B, self.C0, self.VC, self.M0, self.VM,
 		self.X0_2, self.C0_2, self.X0_3, self.C0_3, self.X0_4, self.C0_4,
-		self.X1, self.C1, self.X2, self.C2, self.X3, self.C3) = cube_aug
+		self.X1, self.C1, self.X2, self.C2, self.X3, self.C3, 
+		self.SF_param, self.LD_param) = cube_aug 
 
 		self.X4 = 0.0
 		self.C4 = 0.0 # set to zero unless doing global linear
@@ -89,6 +90,10 @@ class loglike(object):
 			H0 = 66.7 # km/s/Mpc
 			c = 299792.458
 			dist = c/H0 * np.hstack([tempdL(OM,OL) for tempdL in self.tempInt])
+		elif self.model == 4:  # LTA
+			OM = self.Q
+			SF = self.SF_param if hasattr(self, 'SF_param') else 0.981  # Use default if not specified
+			dist = np.hstack([tempdL(OM, SF) for tempdL in self.tempInt])
 		if (dist<0).any():
 			print('OM, z: ', OM, np.argwhere(dist<0))
 		return dist
@@ -159,31 +164,38 @@ def prior(cube,ndim,nparams):
 	cube[8] = 10.**cube[8]
 
 
-def getindices(zdep,case):
-	"""
-	Assign indices to non-zero light curve parameters
-	"""
-	ip = list(range(9))
-	if zdep == 1:
-		if case == 2:
-			iadd = [15]
-		elif case == 3:
-			iadd = [9,11,13,15,17,19]
-		elif case == 4:
-			iadd = [16]
-		elif case == 5:
-			iadd = [10,12,14,16,18,20]
-		elif case == 6:
-			iadd = [15,16]
-		elif case == 7:
-			iadd = range(9,21)
-		elif case == 8:
-			iadd = [10,12,14,15,16,18,20]
-	elif zdep == 0:
-		iadd = []
-	else:
-		raise ValueError('third argument must be either 1 (z dependence) or 0 (no z dependence)')
-	return ip + iadd
+def getindices(zdep, case, model=None):
+    """
+    Assign indices to non-zero light curve parameters
+    """
+    ip = list(range(9))  # Base parameters (always included)
+    
+    # Add redshift-dependent parameters based on case
+    if zdep == 1:
+        if case == 2:
+            iadd = [15]
+        elif case == 3:
+            iadd = [9,11,13,15,17,19]
+        elif case == 4:
+            iadd = [16]
+        elif case == 5:
+            iadd = [10,12,14,16,18,20]
+        elif case == 6:
+            iadd = [15,16]
+        elif case == 7:
+            iadd = range(9,21)
+        elif case == 8:
+            iadd = [10,12,14,15,16,18,20]
+    elif zdep == 0:
+        iadd = []
+    else:
+        raise ValueError('third argument must be either 1 (z dependence) or 0 (no z dependence)')
+    
+    # Add model-specific parameters
+    if model == 4:  # LTA model
+        iadd = list(iadd) + [21]  # Add SF parameter
+    
+    return ip + iadd
 
 	
 def sort_and_cut(zmin,Zdata,covmatrix,splines):
@@ -216,27 +228,29 @@ if __name__ == '__main__':
 	c = 299792.458 # km/s
 	
 	# Prior limits
-	prior_lims = [ # fv: 0.5*(np.sqrt(9.-8.*om)-1)
-		       (0.0, 1.0),     #alpha
-		       (-20.0, 20.0),  #X0
-		       (-10.0, 4.0),   #lVX
-		       (0.0, 4.0),     #beta
-		       (-20.0, 20.0),  #C0
-		       (-10.0, 4.0),   #lVC
-		       (-20.3, -18.3), #M0
-		       (-10.0, 4.0),   #lVM
-		       (-20.0, 20.0),  #X0_2
-		       (-20.0, 20.0),  #C0_2
-		       (-20.0, 20.0),  #X0_3
-		       (-20.0, 20.0),  #C0_3
-		       (-20.0, 20.0),  #X0_4
-		       (-20.0, 20.0),  #C0_4
-		       (-20.0, 20.0),  #X1
-		       (-20.0, 20.0),  #C1
-		       (-20.0, 20.0),  #X2
-		       (-20.0, 20.0),  #C2
-		       (-20.0, 20.0),  #X3
-		       (-20.0, 20.0) ] #C3
+	prior_lims = [ # First element will be replaced based on model
+           (0.0, 1.0),     #alpha
+           (-20.0, 20.0),  #X0
+           (-10.0, 4.0),   #lVX
+           (0.0, 4.0),     #beta
+           (-20.0, 20.0),  #C0
+           (-10.0, 4.0),   #lVC
+           (-20.3, -18.3), #M0
+           (-10.0, 4.0),   #lVM
+           (-20.0, 20.0),  #X0_2
+           (-20.0, 20.0),  #C0_2
+           (-20.0, 20.0),  #X0_3
+           (-20.0, 20.0),  #C0_3
+           (-20.0, 20.0),  #X0_4
+           (-20.0, 20.0),  #C0_4
+           (-20.0, 20.0),  #X1
+           (-20.0, 20.0),  #C1
+           (-20.0, 20.0),  #X2
+           (-20.0, 20.0),  #C2
+           (-20.0, 20.0),  #X3
+           (-20.0, 20.0),  #C3
+           (0.979, 0.983), #SF parameter
+           (0.086, 0.091)] #LD parameter
 
 	model = int(sys.argv[1])    # 1=Timescape, 2=Empty, 3=Flat
 	z_cut = float(sys.argv[2])  # redshift cut e.g. 0.033
@@ -269,12 +283,15 @@ if __name__ == '__main__':
 	elif model == 2 or model == 3:
 		p1prior = [(0.162,0.392), (0.143,0.487), (0.124,0.665), (0.001,0.999)] #om
 		tempInt = spl(versionname, Ntotal).lcdm
+	elif model == 4:  # LTA
+		p1prior = [(0.162,0.392), (0.143,0.487), (0.124,0.665), (0.001,0.999)] #om
+		tempInt = spl(versionname, Ntotal).lta
 	else:
 		raise ValueError('command line arguments allowed: 1 = Timescape, 2 = spactially flat LCDM')
 
 
 	Z, COVd, tempInt = sort_and_cut(z_cut,Z,COVd,tempInt)
-	ipars = getindices(zdep,case)
+	ipars = getindices(zdep,case, model)
 	prior_lims = [p1prior[isigma-1],] + prior_lims # add fv/om prior
 	ndim = len(ipars)
 

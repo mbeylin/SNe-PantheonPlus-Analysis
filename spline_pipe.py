@@ -20,3 +20,12 @@ class spl(object):
         self.lcdm = []
         for i in range(self.Ntotal):
             self.lcdm.append(interpolate.RectBivariateSpline(oms, ols, interpu[i]))
+        
+        # Load LTA interpolation
+        interp_lta = np.load('Pantheon/Build/PP_' + self.name + '_tabledL_lta.npy')
+        oms = np.linspace(0.00, 0.99, 100)
+        oms[0] = 0.001
+        sfs = np.linspace(0.979, 0.983, 100)
+        self.lta = []
+        for i in range(self.Ntotal):
+            self.lta.append(interpolate.RectBivariateSpline(oms, sfs, interp_lta[i]))

@@ -63,6 +63,36 @@ def LCDM(lamCDM, includeLogV=False):
     
     return lamCDM_omega, lamCDM_alpha, lamCDM_beta, lamCDM_x, lamCDM_c, lamCDM_M
 
+def LTA(lta_params, includeLogV=False):
+    """
+    Extract parameters from LTA model results
+    """
+    LTA_omega = lta_params[0]
+    LTA_sf = lta_params[1]  # Scale factor parameter
+    LTA_alpha = lta_params[2]
+    LTA_x = lta_params[3]
+    LTA_beta = lta_params[5]
+    LTA_c = lta_params[6]
+    LTA_M = lta_params[8]
+    
+    LTA_omega = np.transpose(LTA_omega)
+    LTA_sf = np.transpose(LTA_sf)
+    LTA_alpha = np.transpose(LTA_alpha)
+    LTA_x = np.transpose(LTA_x)
+    LTA_beta = np.transpose(LTA_beta)
+    LTA_c = np.transpose(LTA_c)
+    
+    if includeLogV:
+        V_x = np.transpose(lta_params[4])
+        V_c = np.transpose(lta_params[7])
+        V_M = np.transpose(lta_params[9])
+        if includeLogV == 1:
+            return LTA_omega, LTA_sf, LTA_alpha, LTA_x, np.log10(V_x), LTA_beta, LTA_c, np.log10(V_c), LTA_M, np.log10(V_M)
+        elif includeLogV == 2:
+            return LTA_omega, LTA_sf, LTA_alpha, LTA_x, V_x, LTA_beta, LTA_c, V_c, LTA_M, V_M
+    
+    return LTA_omega, LTA_sf, LTA_alpha, LTA_beta, LTA_x, LTA_c, LTA_M
+
 def Milne(milne, includeLogV=False):
     
     milne_omega = milne[0]

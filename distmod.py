@@ -149,6 +149,59 @@ class timescape:
         """
         return 5*np.log10(self.dL(zcmb)) + 25
 
+class lta:
+    """
+    Local Time Acceleration (LTA) model class.
+    
+    This model hypothesizes that dark energy effects are actually caused by 
+    a local acceleration of time due to negentropic effects of life.
+    """
+    
+    def __init__(self, om0, sf=0.981, ld=0.0883, qd=-0.0521, H0=66.7):
+        """
+        Initialize LTA model with full parameter set.
+        """
+        self.om0 = om0
+        self.sf = sf
+        self.ld = ld
+        self.qd = qd
+        self.c = 2.9979e5  # Speed of light in km/s
+        self.dH = self.c/H0
+        
+    def tau(self, t):
+        """
+        Time acceleration function: τ(t) = SF × (1 + LD × ln(1+t)^QD)
+        """
+        return self.sf * (1.0 + self.ld * (np.log(1.0 + t))**self.qd)
+        
+    def _integrand(self, zcmb):
+        """
+        Computes modified H0/H(z) including LTA effect
+        """
+        z1 = 1.0 + zcmb
+        # Convert redshift to approximate cosmic time (normalized)
+        t_approx = 1.0 / np.sqrt(z1)
+        
+        # Apply time acceleration modification
+        tau_mod = self.tau(t_approx)
+        
+        # Modified expansion rate with LTA effect
+        return tau_mod / np.sqrt(self.om0 * z1**3 + (1.0 - self.om0))
+    
+    def dL(self, zcmb):
+        """
+        Computes luminosity distance in LTA model.
+        """
+        I, err = integrate.quad(self._integrand, 0.0, zcmb)
+        t_approx = 1.0 / np.sqrt(1.0 + zcmb)
+        return (1.0 + zcmb) * I * self.dH * self.tau(t_approx)
+    
+    def mu(self, zcmb):
+        """
+        Distance modulus in LTA model.
+        """
+        return 5.0 * np.log10(self.dL(zcmb)) + 25.0
+    
 def rundistmod(prefix):
     input = np.loadtxt(prefix+'input.txt')
     zcmb = input[:,0]
@@ -190,6 +243,33 @@ def rundistmod(prefix):
 
     np.save(prefix+'tabledL_ts.npy',interp)
 
+    # compute dL for LTA model
+    interp = np.empty((N, 100, 100, 100))
+    Oms = np.linspace(0.0, 0.99, 100)
+    Oms[0] = 0.001  # avoid singular values
+    
+    # Default values
+    default_sf = 0.981
+    default_ld = 0.0883
+    default_qd = -0.0521
+    
+    # To reduce computational complexity, create a 3D table varying om0 and the most 
+    # sensitive parameters (determine which through preliminary testing)
+    SFs = np.linspace(0.979, 0.983, 100)  # SF range
+    
+    # First create a table with varying om0 and sf (fixing other parameters)
+    interp_lta = np.empty((N, 100, 100))
+    for i, Om in enumerate(Oms):
+        for j, SF in enumerate(SFs):
+            for k in range(N):
+                lta_model = lta(Om, sf=SF, ld=default_ld, qd=default_qd)
+                zz = zcmb[k]
+                try:
+                    interp_lta[k,i,j] = lta_model.dL(zz)
+                except:
+                    interp_lta[k,i,j] = 10000.
+    
+    np.save(prefix+'tabledL_lta.npy', interp_lta)
     
     
 if __name__ == '__main__':

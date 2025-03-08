@@ -5,9 +5,15 @@
 # Supernovae data is that of the Pantheon+ sample. 
 # The code is a modified version of that of J. T. Nielsen, A. Guffanti, S. Sarkar: arXiv:1506.01354
 #
-# In the present analysis best fit parameters and statistical measures are calculated for the standard model flat and empty universe and for the timescape model. 
+# In the present analysis best fit parameters and statistical measures are calculated for:
+# - Standard model flat and empty universe
+# - Timescape model
+# - Local Time Acceleration (LTA) model
+#   * LTA model proposes that dark energy effects are actually due to local time acceleration
+#   * Uses time acceleration function: τ(t) = SF × (1 + LD × ln(1+t)^QD)
+#   * Default parameters: SF = 0.981, LD = 0.0883, QD = -0.0521
 #
-# This code reproduces the frequentists results of arXiv:1706.07236v2 for a single redshift cut if using the JLA data as input.
+# # This code reproduces the frequentists results of arXiv:1706.07236v2 for a single redshift cut if using the JLA data as input.
 # To redo the redshift dependence analysis, simply loop over a range of redshift cuts zmin. 
 #
 # The code can easily be modified to include differently constrained standard models. 
@@ -34,15 +40,18 @@ def runfreq(prefixinp, prefixsav, zC=np.linspace(0,0.1,41)):
     '''arguments: the prefix from which to read the INPut and the prefix to which to SAVe the output'''
     interpolation_ts = prefixinp + 'tabledL_ts.npy'		 # Grid range timescape: OM in [0.001,0.99] 
     interpolation_standardmodel = prefixinp + 'tabledL_lcdm.npy'	 # Grid range standard model: OM in [0,1.5], OL in [-.5,1.5]
-    
+    interpolation_lta = prefixinp + 'tabledL_lta.npy'  # Grid range LTA model
+
     # ================== CHOOSING CONDITIONS FOR OPTIMISATION ==================
     
     ts = []
     lcdm = []
     milne = []
+    lta = []
     aic = []
     logl_ts = []
     logl_lcdm = []
+    logl_lta = []
     
     for zmin in zC:
     
@@ -83,6 +92,8 @@ def runfreq(prefixinp, prefixsav, zC=np.linspace(0,0.1,41)):
                 interp = interp[orderCMB,:,:]
             elif model == 'Timescape':
                 interp = interp[orderCMB,:]
+            elif model == 'LTA':
+                interp = interp[orderCMB,:,:]
             orderCMB3 = np.vstack((3*orderCMB, 3*orderCMB+1, 3*orderCMB+2))
             orderCMB3 = orderCMB3.T
             orderCMB3 = orderCMB3.ravel()    
@@ -98,6 +109,8 @@ def runfreq(prefixinp, prefixsav, zC=np.linspace(0,0.1,41)):
                 interp = interp[imin:,:,:]
             elif model == 'Timescape':
                 interp = interp[imin:,:]  
+            elif model == 'lta':
+                interp = interp[imin:,:,:]
             COVd = COVd[3*imin:,3*imin:]     # extracts cov matrix of the larger matrix
             N = N - imin                     # number of SNe left in sample after redshift cut
             print('Number of SNe left in sample after redshift cut:  ', N)
@@ -130,6 +143,22 @@ def runfreq(prefixinp, prefixsav, zC=np.linspace(0,0.1,41)):
         	       
                 cov_params = [1,4,8,3,6]	# Index of parameters for covariance matrix propergation 
                 res_params = [1,4,7,2,5,0]	# Index of parameters for residual calculation 
+            elif model == 'LTA':
+                array_input_om = np.linspace(0.00, 0.99, 100)
+                array_input_om[0] = 0.001
+                array_input_sf = np.linspace(0.979, 0.983, 100)
+                # Spline interpolation of luminosity distance
+                for i in range(N):
+                    tempInt.append(interpolate.RectBivariateSpline(array_input_om, array_input_sf, interp[i]))
+                    
+                def dL(OM, SF): # Units of Mpc
+                    # Fixed values for other parameters
+                    LD = 0.0883  # Default LD value
+                    QD = -0.0521  # Default QD value
+                    return np.hstack([tempdL(OM, SF) for tempdL in tempInt]);
+                    
+                cov_params = [2,5,9,4,7]    # Index of parameters for covariance matrix propagation
+                res_params = [2,5,8,3,6,0,1]    # Index of parameters for residual calculation
             # ============================================================================================
         	   
             def MU( *cosm_params ):  # Distance modulus
@@ -162,6 +191,11 @@ def runfreq(prefixinp, prefixsav, zC=np.linspace(0,0.1,41)):
                     mu = MU(cosm_params[0] )
                 if model == 'Standardmodel':
                     mu = mu[0]
+                if model == 'LTA':
+                    mu = MU(cosm_params[0], cosm_params[1])
+                 # Ensure mu is properly shaped
+                if isinstance(mu, np.ndarray) and len(mu.shape) > 1:
+                    mu = mu.flatten()
                 return np.hstack( [ (Z[i,1:4] -np.array([mu[i],0,0]) - Y0A ) for i in range(N) ] )  
             
             
@@ -183,6 +217,8 @@ def runfreq(prefixinp, prefixsav, zC=np.linspace(0,0.1,41)):
                     bool_pars = pars[0]<0 or pars[0]>1.5 or pars[1]<-.50 or pars[1]>1.5 or pars[4]<0 or pars[7]<0 or pars[9]<0
                 elif model == 'Timescape':    
                     bool_pars = pars[0]< 0.001 or pars[0]> 0.99 or pars[3]<0 or pars[6]<0 or pars[8]<0
+                elif model == 'LTA':
+                    bool_pars = pars[0]<0 or pars[0]>1.0 or pars[1]<0.979 or pars[1]>0.983 or pars[4]<0 or pars[7]<0 or pars[9]<0
         	
                 if bool_pars:
                     # if outside valid region, give penalty	
@@ -245,6 +281,14 @@ def runfreq(prefixinp, prefixsav, zC=np.linspace(0,0.1,41)):
             elif model == 'Timescape':
                 MLE = optimize.minimize(m2loglike, pre_found_timescape, method = 'SLSQP', tol= tolerance)#{'type':'eq', 'fun':m2CONSalpha}, {'type':'eq', 'fun':m2CONSbeta}, , {'type':'ineq', 'fun':m2CONSx1}, ))  
                 return MLE	
+            elif model == 'LTA':
+                # Initial guess for LTA model
+                pre_found_lta = np.array([  3.5e-01, 0.981, 0.14753,
+                    9.94e-02, 8.12e-01, 3.09220,
+                    -2.01e-02, 4.78e-03, -1.90e+01,
+                    1.07e-02])
+                MLE = optimize.minimize(m2loglike, pre_found_lta, method = 'SLSQP', tol= tolerance)
+                return MLE
             # ======================================================================================
         
         def AIC(m2loglike, k): # AIC measure for computing AIC ratio
@@ -252,36 +296,51 @@ def runfreq(prefixinp, prefixsav, zC=np.linspace(0,0.1,41)):
         
         res_lambdaCDM = GetMaxLikelihood(model = 'Standardmodel', ip = interpolation_standardmodel, H0 = 66.7)
         res_timescape = GetMaxLikelihood( model = 'Timescape', ip = interpolation_ts, H0 = 61.7)
+        res_lta = GetMaxLikelihood(model = 'LTA', ip = interpolation_lta, H0 = 66.7)
+
         
         prob_AIC_Flat = np.exp(-0.5 * AIC(res_lambdaCDM[0].fun, 9)  )
         prob_AIC_Empt = np.exp(-0.5 * AIC(res_lambdaCDM[1].fun, 8)  )
         prob_AIC_TS = np.exp(-0.5 * AIC(res_timescape.fun, 9)  )
+        prob_AIC_LTA = np.exp(-0.5 * AIC(res_lta.fun, 10)  ) # 10 parameters for LTA
+
         
         probflat = np.exp(-0.5 * res_lambdaCDM[0].fun)
         probempty = np.exp(-0.5 * res_lambdaCDM[1].fun)
         probtimescape = np.exp(-0.5 * res_timescape.fun)
+        problta = np.exp(-0.5 * res_lta.fun)
+
         
-        AIC = prob_AIC_TS/prob_AIC_Flat
+        AIC_TS = prob_AIC_TS/prob_AIC_Flat
+        AIC_LTA = prob_AIC_LTA/prob_AIC_Flat
+
         logl_lcdm.append(res_lambdaCDM[0].fun)
         logl_ts.append(res_timescape.fun)
-        aic.append(AIC)
+        logl_lta.append(res_lta.fun)
+        
+        aic.append([AIC_TS, AIC_LTA])
         ts.append(res_timescape.x)
         lcdm.append(res_lambdaCDM[0].x)
         milne.append(res_lambdaCDM[1].x)
+        lta.append(res_lta.x)
     
     ts = np.column_stack(ts)
     lcdm = np.column_stack(lcdm)
     milne = np.column_stack(milne)
+    lta = np.column_stack(lta)
     aic = np.column_stack(aic)
     logl_ts = np.column_stack(logl_ts)
     logl_lcdm = np.column_stack(logl_lcdm)
+    logl_lta = np.column_stack(logl_lta)
     
     np.savetxt(prefixsav+'TS.txt', ts, delimiter = '\t')
     np.savetxt(prefixsav+'LCDM.txt', lcdm, delimiter = '\t')
     np.savetxt(prefixsav+'Milne.txt', milne, delimiter = '\t')
+    np.savetxt(prefixsav+'LTA.txt', lta, delimiter = '\t')
     np.savetxt(prefixsav+'aic.txt', aic, delimiter = '\t')
     np.savetxt(prefixsav+'logl_lcdm.txt', logl_lcdm, delimiter = '\t')
     np.savetxt(prefixsav+'logl_ts.txt', logl_ts, delimiter = '\t')
+    np.savetxt(prefixsav+'logl_lta.txt', logl_lta, delimiter = '\t')
     
 if __name__ == '__main__':
     start = time.time()
